@@ -1,0 +1,198 @@
+
+<style>
+.panel { background: var(--color-background-secondary); border-radius: var(--border-radius-lg); padding: 1rem 1.25rem; margin-bottom: 12px; }
+.row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.lbl { font-size: 13px; color: var(--color-text-secondary); min-width: 110px; }
+.val { font-size: 13px; font-weight: 500; min-width: 48px; color: var(--color-text-primary); }
+.stat-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-bottom: 14px; }
+.stat { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 10px 12px; }
+.stat-lbl { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; }
+.stat-val { font-size: 20px; font-weight: 500; color: var(--color-text-primary); }
+.hint { font-size: 12px; color: var(--color-text-tertiary); margin-top: 6px; }
+canvas { width: 100%; border-radius: var(--border-radius-md); display: block; }
+</style>
+
+<div class="panel">
+  <div class="row">
+    <span class="lbl">個體 ETA (η)</span>
+    <input type="range" min="-2" max="2" step="0.01" value="0" id="eta" style="flex:1">
+    <span class="val" id="eta-val">0.00</span>
+  </div>
+  <div class="row">
+    <span class="lbl">OMEGA (ω²)</span>
+    <input type="range" min="0.02" max="0.5" step="0.01" value="0.1" id="omega" style="flex:1">
+    <span class="val" id="omega-val">0.10</span>
+  </div>
+  <div class="row">
+    <span class="lbl">觀測 DV</span>
+    <input type="range" min="0.5" max="8" step="0.1" value="3.5" id="dv" style="flex:1">
+    <span class="val" id="dv-val">3.5</span>
+  </div>
+  <div class="row" style="margin-bottom:0">
+    <span class="lbl">殘差 SIGMA (σ²)</span>
+    <input type="range" min="0.01" max="0.3" step="0.01" value="0.05" id="sigma" style="flex:1">
+    <span class="val" id="sigma-val">0.05</span>
+  </div>
+</div>
+
+<div class="stat-row">
+  <div class="stat">
+    <div class="stat-lbl">先驗懲罰項</div>
+    <div class="stat-val" id="s-prior" style="color:#534AB7">—</div>
+  </div>
+  <div class="stat">
+    <div class="stat-lbl">殘差項</div>
+    <div class="stat-val" id="s-resid" style="color:#993C1D">—</div>
+  </div>
+  <div class="stat">
+    <div class="stat-lbl">總 OFV（最小化目標）</div>
+    <div class="stat-val" id="s-ofv">—</div>
+  </div>
+</div>
+
+<canvas id="c" height="240"></canvas>
+<p class="hint">橘色垂直線 = 你選的 η｜紫色曲線 = 先驗項｜橘色曲線 = 殘差項｜深色實線 = 總 OFV｜最低點 = MAP 解 η*</p>
+
+<script>
+const cvs = document.getElementById('c');
+const ctx = cvs.getContext('2d');
+
+function getInputs() {
+  return {
+    eta:   parseFloat(document.getElementById('eta').value),
+    omega: parseFloat(document.getElementById('omega').value),
+    dv:    parseFloat(document.getElementById('dv').value),
+    sigma: parseFloat(document.getElementById('sigma').value),
+  };
+}
+
+function predict(eta) {
+  const CL = 0.25 * Math.pow(60/70, 0.75) * Math.exp(eta);
+  const V  = 5;
+  const t  = 14;
+  return (300/V) * Math.exp(-(CL/V)*t);
+}
+
+function priorTerm(eta, omega) { return (eta*eta)/omega; }
+function residTerm(eta, dv, sigma) {
+  const p = predict(eta);
+  return Math.pow(dv - p, 2) / (sigma * p * p + 0.01);
+}
+function ofv(eta, omega, dv, sigma) { return priorTerm(eta,omega) + residTerm(eta,dv,sigma); }
+
+function findMapEta(omega, dv, sigma) {
+  let best = -2, bestV = 1e9;
+  for (let e = -2; e <= 2; e += 0.001) {
+    const v = ofv(e, omega, dv, sigma);
+    if (v < bestV) { bestV = v; best = e; }
+  }
+  return best;
+}
+
+function draw() {
+  const { eta, omega, dv, sigma } = getInputs();
+  document.getElementById('eta-val').textContent   = eta.toFixed(2);
+  document.getElementById('omega-val').textContent = omega.toFixed(2);
+  document.getElementById('dv-val').textContent    = dv.toFixed(1);
+  document.getElementById('sigma-val').textContent = sigma.toFixed(2);
+
+  const pr = priorTerm(eta, omega);
+  const re = residTerm(eta, dv, sigma);
+  const total = pr + re;
+  document.getElementById('s-prior').textContent = pr.toFixed(2);
+  document.getElementById('s-resid').textContent = re.toFixed(2);
+  document.getElementById('s-ofv').textContent   = total.toFixed(2);
+
+  const W = cvs.offsetWidth || 560;
+  cvs.width  = W * devicePixelRatio;
+  cvs.height = 240 * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+
+  const pad = { l:40, r:20, t:16, b:30 };
+  const w = W - pad.l - pad.r;
+  const h = 240 - pad.t - pad.b;
+
+  const etaRange = [-2, 2];
+  const N = 300;
+  const xs = Array.from({length:N}, (_,i) => etaRange[0] + i*(etaRange[1]-etaRange[0])/(N-1));
+
+  const prVals  = xs.map(e => priorTerm(e, omega));
+  const reVals  = xs.map(e => residTerm(e, dv, sigma));
+  const ofvVals = xs.map((e,i) => prVals[i] + reVals[i]);
+
+  const maxY = Math.min(Math.max(...ofvVals)*1.15, 40);
+  const minY = 0;
+
+  function toX(e) { return pad.l + (e - etaRange[0])/(etaRange[1]-etaRange[0]) * w; }
+  function toY(v) { return pad.t + h - Math.max(0, Math.min(1, (v-minY)/(maxY-minY)))*h; }
+
+  ctx.clearRect(0, 0, W, 240);
+
+  function drawAxis() {
+    ctx.strokeStyle = 'rgba(128,128,128,0.2)';
+    ctx.lineWidth = 0.5;
+    [0, 0.25, 0.5, 0.75, 1].forEach(f => {
+      const y = pad.t + f*h;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+w, y); ctx.stroke();
+      const v = minY + (1-f)*(maxY-minY);
+      ctx.fillStyle = 'rgba(128,128,128,0.6)';
+      ctx.font = `11px var(--font-sans)`;
+      ctx.textAlign = 'right';
+      ctx.fillText(v.toFixed(1), pad.l-4, y+4);
+    });
+    [-2,-1,0,1,2].forEach(e => {
+      const x = toX(e);
+      ctx.beginPath(); ctx.moveTo(x, pad.t+h); ctx.lineTo(x, pad.t+h+4); ctx.stroke();
+      ctx.fillStyle = 'rgba(128,128,128,0.7)';
+      ctx.textAlign = 'center';
+      ctx.fillText(e, x, pad.t+h+16);
+    });
+  }
+  drawAxis();
+
+  function drawCurve(vals, color, dash=[]) {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash(dash);
+    vals.forEach((v,i) => {
+      const x = toX(xs[i]);
+      const y = toY(v);
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  drawCurve(prVals,  '#7F77DD', [4,3]);
+  drawCurve(reVals,  '#D85A30', [4,3]);
+  drawCurve(ofvVals, 'var(--color-text-primary)', []);
+
+  const mapEta = findMapEta(omega, dv, sigma);
+  const mapX   = toX(mapEta);
+  ctx.strokeStyle = '#1D9E75';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(mapX, pad.t); ctx.lineTo(mapX, pad.t+h); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#1D9E75';
+  ctx.beginPath(); ctx.arc(mapX, toY(ofv(mapEta,omega,dv,sigma)), 5, 0, Math.PI*2); ctx.fill();
+  ctx.font = `11px var(--font-sans)`;
+  ctx.fillStyle = '#1D9E75';
+  ctx.textAlign = 'left';
+  ctx.fillText('η* = ' + mapEta.toFixed(2), mapX+7, pad.t+14);
+
+  const curX = toX(eta);
+  ctx.strokeStyle = '#EF9F27';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(curX, pad.t); ctx.lineTo(curX, pad.t+h); ctx.stroke();
+  ctx.fillStyle = '#EF9F27';
+  ctx.beginPath(); ctx.arc(curX, toY(total), 5, 0, Math.PI*2); ctx.fill();
+}
+
+['eta','omega','dv','sigma'].forEach(id => {
+  document.getElementById(id).addEventListener('input', draw);
+});
+draw();
+window.addEventListener('resize', draw);
+</script>
