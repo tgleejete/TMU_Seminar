@@ -1,25 +1,211 @@
-<h2>Covariate Model</h2>
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Module 02 — Covariate Effects</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="js/pk_engine.js"></script>
+</head>
+<body>
 
-Weight:
-<input id="wt" value="70">
+<nav class="topnav">
+  <a href="index.html" class="brand">PopPK Lab</a>
+  <a href="population_model.html">Population PK</a>
+  <a href="covariate_effect.html" class="active">Covariates</a>
+  <a href="dose_simulator.html">Dose Simulator</a>
+  <a href="map_estimation.html">MAP Estimation</a>
+  <a href="mipd_dose_adjustment.html">MIPD</a>
+</nav>
 
-<button onclick="calcCL()">Calculate CL</button>
+<div class="page">
+  <div class="page-header">
+    <h1>Covariate Effects</h1>
+    <p>Covariate 在 PopPK 中改變「族群參數均值」，而非直接參與 MAP 最佳化。下方即時顯示對 CL 的影響。</p>
+  </div>
 
-<p id="result"></p>
+  <div class="eq-box">
+    CL<sub>i</sub> = TVCL · (WT/70)<sup>θ_WT</sup> · exp(θ_ALB · (ALB−40)/10) · exp(η<sub>i</sub>)
+  </div>
+
+  <div class="grid2" style="margin-top:1.2rem">
+    <div class="card">
+      <div class="card-title">Base Parameters</div>
+      <label class="ctrl">
+        <span class="lbl">TVCL (L/h)</span>
+        <input type="range" id="tvcl" min="0.05" max="2" step="0.01" value="0.25">
+        <span class="val" id="tvcl-v">0.25</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">TVV (L)</span>
+        <input type="range" id="tvv" min="1" max="20" step="0.5" value="5">
+        <span class="val" id="tvv-v">5.0</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">Dose (mg)</span>
+        <input type="range" id="dose" min="50" max="1000" step="50" value="300">
+        <span class="val" id="dose-v">300</span>
+      </label>
+
+      <div class="card-title" style="margin-top:1rem">Covariate Values</div>
+      <label class="ctrl">
+        <span class="lbl">WT (kg)</span>
+        <input type="range" id="wt" min="30" max="150" step="1" value="70">
+        <span class="val" id="wt-v">70</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">ALB (g/L)</span>
+        <input type="range" id="alb" min="15" max="55" step="1" value="40">
+        <span class="val" id="alb-v">40</span>
+      </label>
+
+      <div class="card-title" style="margin-top:1rem">Covariate Coefficients</div>
+      <label class="ctrl">
+        <span class="lbl">θ_WT (power)</span>
+        <input type="range" id="thwt" min="0" max="1.5" step="0.05" value="0.75">
+        <span class="val" id="thwt-v">0.75</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">θ_ALB (linear)</span>
+        <input type="range" id="thalb" min="-1" max="1" step="0.05" value="0">
+        <span class="val" id="thalb-v">0.00</span>
+      </label>
+    </div>
+
+    <div>
+      <div class="grid2" style="margin-bottom:1rem">
+        <div class="stat-card">
+          <div class="s-label">Pop CL (L/h)</div>
+          <div class="s-value" id="s-popcl" style="color:var(--muted)">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">Individual CL (L/h)</div>
+          <div class="s-value" id="s-indcl" style="color:var(--accent2)">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">WT adjustment factor</div>
+          <div class="s-value" id="s-wtf">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">ALB adjustment factor</div>
+          <div class="s-value" id="s-albf">—</div>
+        </div>
+      </div>
+      <!-- CL vs WT curve -->
+      <div class="card">
+        <div class="card-title">CL vs WT (dose-normalized)</div>
+        <div class="chart-wrap" style="height:180px">
+          <canvas id="chart-wt"></canvas>
+        </div>
+        <p class="hint">橘色垂直線 = 當前 WT 位置</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- PK profile comparison -->
+  <div class="card" style="margin-top:1rem">
+    <div class="card-title">PK Profile: population mean (---) vs this patient (—)</div>
+    <div class="chart-wrap" style="height:280px">
+      <canvas id="chart-pk"></canvas>
+    </div>
+  </div>
+</div>
 
 <script>
+let chartWT, chartPK;
 
-function calcCL(){
+function initCharts() {
+  chartWT = new Chart(document.getElementById('chart-wt').getContext('2d'), {
+    type:'line', data:{datasets:[]},
+    options:{
+      animation:false, responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{type:'linear',title:{display:true,text:'WT (kg)',color:'#7a8099'},ticks:{color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'}},
+        y:{title:{display:true,text:'CL (L/h)',color:'#7a8099'},ticks:{color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'}}
+      },
+      plugins:{legend:{display:false}}
+    }
+  });
 
-let wt = document.getElementById("wt").value
-
-let CLpop = 5
-
-let CL = CLpop * Math.pow(wt/70,0.75)
-
-document.getElementById("result").innerHTML =
-"CL = " + CL.toFixed(2)
-
+  chartPK = new Chart(document.getElementById('chart-pk').getContext('2d'), {
+    type:'line', data:{datasets:[]},
+    options:{
+      animation:false, responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{type:'linear',title:{display:true,text:'Time (h)',color:'#7a8099'},ticks:{color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'}},
+        y:{title:{display:true,text:'Concentration (mg/L)',color:'#7a8099'},ticks:{color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'}}
+      },
+      plugins:{legend:{labels:{color:'#7a8099',boxWidth:12}}}
+    }
+  });
 }
 
+function update() {
+  const tvcl  = +document.getElementById('tvcl').value;
+  const tvv   = +document.getElementById('tvv').value;
+  const dose  = +document.getElementById('dose').value;
+  const wt    = +document.getElementById('wt').value;
+  const alb   = +document.getElementById('alb').value;
+  const thwt  = +document.getElementById('thwt').value;
+  const thalb = +document.getElementById('thalb').value;
+
+  ['tvcl','tvv'].forEach(id => {
+    const v = +document.getElementById(id).value;
+    document.getElementById(id+'-v').textContent = id==='tvv' ? v.toFixed(1) : v.toFixed(2);
+  });
+  document.getElementById('dose-v').textContent = dose;
+  document.getElementById('wt-v').textContent   = wt;
+  document.getElementById('alb-v').textContent  = alb;
+  document.getElementById('thwt-v').textContent = thwt.toFixed(2);
+  document.getElementById('thalb-v').textContent= thalb.toFixed(2);
+
+  const wtF   = Math.pow(wt/70, thwt);
+  const albF  = Math.exp(thalb * (alb-40)/10);
+  const clPop = tvcl;
+  const clInd = tvcl * wtF * albF;
+
+  document.getElementById('s-popcl').textContent = clPop.toFixed(3);
+  document.getElementById('s-indcl').textContent = clInd.toFixed(3);
+  document.getElementById('s-wtf').textContent   = wtF.toFixed(3);
+  document.getElementById('s-albf').textContent  = albF.toFixed(3);
+
+  // CL vs WT chart
+  const wts = Array.from({length:121},(_,i)=>i+30);
+  const clVals = wts.map(w => tvcl * Math.pow(w/70,thwt) * albF);
+
+  chartWT.data.datasets = [
+    { label:'CL vs WT', data: wts.map((w,i)=>({x:w,y:clVals[i]})),
+      borderColor:'#6c8fff', borderWidth:2, pointRadius:0, tension:0.3, fill:false },
+    { label:'Current', data:[{x:wt,y:clInd}],
+      borderColor:'#f4a44a', borderWidth:0,
+      pointRadius:7, pointBackgroundColor:'#f4a44a', showLine:false }
+  ];
+  chartWT.update('none');
+
+  // PK profiles
+  const events = [{time:0,amt:dose,route:'iv',dur:0}];
+  const ke = clInd / tvv;
+  const tEnd = ke > 0 ? Math.min(Math.max(48, 5 * Math.log(2) / ke), 336) : 336;
+  const popSim = simulate(events, {CL:clPop, V:tvv}, tEnd);
+  const indSim = simulate(events, {CL:clInd, V:tvv}, tEnd);
+
+  chartPK.data.datasets = [
+    { label:`Pop mean (WT=70, ALB=40)`, data: popSim.map(r=>({x:r.t,y:r.c})),
+      borderColor:'#7a8099', borderWidth:1.5, borderDash:[5,4],
+      pointRadius:0, tension:0.3, fill:false },
+    { label:`Individual (WT=${wt}, ALB=${alb})`, data: indSim.map(r=>({x:r.t,y:r.c})),
+      borderColor:'#3dd6a3', borderWidth:2.5,
+      pointRadius:0, tension:0.3, fill:false }
+  ];
+  chartPK.update('none');
+}
+
+initCharts();
+update();
+['tvcl','tvv','dose','wt','alb','thwt','thalb'].forEach(id =>
+  document.getElementById(id).addEventListener('input', update)
+);
 </script>
+</body>
+</html>

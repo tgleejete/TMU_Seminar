@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Module 01 — Population PK Model</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="js/pk_engine.js"></script>
+</head>
+<body>
+
+<nav class="topnav">
+  <a href="index.html" class="brand">PopPK Lab</a>
+  <a href="population_model.html" class="active">Population PK</a>
+  <a href="covariate_effect.html">Covariates</a>
+  <a href="dose_simulator.html">Dose Simulator</a>
+  <a href="map_estimation.html">MAP Estimation</a>
+  <a href="mipd_dose_adjustment.html">MIPD</a>
+</nav>
+
+<div class="page">
+  <div class="page-header">
+    <h1>Population PK Model</h1>
+    <p>一室模型（IV bolus）。調整族群參數，觀察濃度–時間曲線與 IIV 分佈。</p>
+  </div>
+
+  <div class="eq-box">CL<sub>i</sub> = TVCL · exp(η<sub>i</sub>)&nbsp;&nbsp;&nbsp;V<sub>i</sub> = TVV · exp(η<sub>V,i</sub>)<br>
+  C(t) = (Dose/V<sub>i</sub>) · exp(−(CL<sub>i</sub>/V<sub>i</sub>)·t)</div>
+
+  <div class="grid2" style="margin-top:1.2rem">
+    <!-- Left: controls -->
+    <div class="card">
+      <div class="card-title">Model Parameters</div>
+
+      <label class="ctrl">
+        <span class="lbl">TVCL (L/h)</span>
+        <input type="range" id="tvcl" min="0.05" max="2" step="0.01" value="0.25">
+        <span class="val" id="tvcl-v">0.25</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">TVV (L)</span>
+        <input type="range" id="tvv" min="1" max="20" step="0.5" value="5">
+        <span class="val" id="tvv-v">5.0</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">Dose (mg)</span>
+        <input type="range" id="dose" min="50" max="1000" step="50" value="300">
+        <span class="val" id="dose-v">300</span>
+      </label>
+
+      <div style="margin-top:1rem" class="card-title">Inter-Individual Variability</div>
+      <label class="ctrl">
+        <span class="lbl">ω² (CL IIV)</span>
+        <input type="range" id="omega" min="0" max="0.8" step="0.01" value="0.1">
+        <span class="val" id="omega-v">0.10</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">N simulated</span>
+        <input type="range" id="nsim" min="0" max="50" step="1" value="20">
+        <span class="val" id="nsim-v">20</span>
+      </label>
+
+      <div style="margin-top:1rem" class="card-title">Residual Error</div>
+      <label class="ctrl">
+        <span class="lbl">σ_prop</span>
+        <input type="range" id="sprop" min="0" max="0.5" step="0.01" value="0.2">
+        <span class="val" id="sprop-v">0.20</span>
+      </label>
+    </div>
+
+    <!-- Right: stats -->
+    <div>
+      <div class="grid2" style="margin-bottom:1rem">
+        <div class="stat-card">
+          <div class="s-label">Ke (1/h)</div>
+          <div class="s-value" id="s-ke">—<span class="s-unit"></span></div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">t½ (h)</div>
+          <div class="s-value" id="s-t12">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">C₀ (mg/L)</div>
+          <div class="s-value" id="s-c0">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">AUC₀–∞ (mg·h/L)</div>
+          <div class="s-value" id="s-auc">—</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">%CV of CL across simulated subjects</div>
+        <div class="s-value" id="s-cv" style="font-size:2rem">—</div>
+        <p class="hint">%CV = √(e^ω² − 1) × 100</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chart -->
+  <div class="card" style="margin-top:1rem">
+    <div class="chart-wrap" style="height:340px">
+      <canvas id="chart"></canvas>
+    </div>
+    <p class="hint" style="margin-top:8px">藍色粗線 = 族群預測（η=0）｜半透明細線 = 模擬個體（含 IIV）｜對數Y軸顯示線性消除特徵</p>
+  </div>
+</div>
+
+<script>
+let chart;
+
+function initChart() {
+  const ctx = document.getElementById('chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets: [] },
+    options: {
+      animation: false,
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { type:'linear', title:{display:true,text:'Time (h)',color:'#7a8099'}, ticks:{color:'#7a8099'}, grid:{color:'rgba(255,255,255,0.05)'} },
+        y: { type:'logarithmic', min: 1e-3,
+             title:{display:true,text:'Concentration (mg/L)',color:'#7a8099'},
+             ticks:{color:'#7a8099', callback: v => [10,1,0.1,0.01,0.001].includes(+v.toFixed(4)) ? v : null},
+             grid:{color:'rgba(255,255,255,0.05)'} }
+      },
+      plugins: { legend:{display:false} }
+    }
+  });
+}
+
+function update() {
+  const tvcl  = +document.getElementById('tvcl').value;
+  const tvv   = +document.getElementById('tvv').value;
+  const dose  = +document.getElementById('dose').value;
+  const omega2= +document.getElementById('omega').value;
+  const nsim  = +document.getElementById('nsim').value;
+  const sprop = +document.getElementById('sprop').value;
+
+  document.getElementById('tvcl-v').textContent = tvcl.toFixed(2);
+  document.getElementById('tvv-v').textContent  = tvv.toFixed(1);
+  document.getElementById('dose-v').textContent = dose;
+  document.getElementById('omega-v').textContent= omega2.toFixed(2);
+  document.getElementById('nsim-v').textContent = nsim;
+  document.getElementById('sprop-v').textContent= sprop.toFixed(2);
+
+  const ke = tvcl / tvv;
+  const t12 = Math.log(2) / ke;
+  const c0  = dose / tvv;
+  const auc = dose / tvcl;
+  const cv  = Math.sqrt(Math.exp(omega2) - 1) * 100;
+
+  document.getElementById('s-ke').textContent  = ke.toFixed(4);
+  document.getElementById('s-t12').textContent = t12.toFixed(1);
+  document.getElementById('s-c0').textContent  = c0.toFixed(2);
+  document.getElementById('s-auc').textContent = auc.toFixed(1);
+  document.getElementById('s-cv').textContent  = cv.toFixed(1) + '%';
+
+  const tEnd = ke > 0 ? Math.min(Math.max(48, 5*t12), 336) : 336;
+  const events = [{ time:0, amt:dose, route:'iv', dur:0 }];
+
+  // Population prediction
+  const popSim = simulate(events, { CL: tvcl, V: tvv }, tEnd);
+  const popData = popSim.filter(r => r.c > 1e-4).map(r => ({ x: r.t, y: r.c }));
+
+  // Simulated individuals
+  const indDatasets = [];
+  for (let i = 0; i < nsim; i++) {
+    const eta = sampleNormal(0, Math.sqrt(omega2));
+    const CL_i = tvcl * Math.exp(eta);
+    const V_i  = tvv;
+    const sim = simulate(events, { CL: CL_i, V: V_i }, tEnd);
+    // Add proportional residual noise
+    const data = sim.filter(r => r.c > 1e-3).map(r => ({
+      x: r.t, y: Math.max(1e-3, r.c * (1 + sampleNormal(0, sprop)))
+    }));
+    indDatasets.push({
+      data, borderColor: 'rgba(108,143,255,0.18)',
+      borderWidth: 1, pointRadius: 0, tension: 0.3, fill: false
+    });
+  }
+
+  chart.data.datasets = [
+    ...indDatasets,
+    {
+      data: popData,
+      borderColor: '#6c8fff', borderWidth: 2.5,
+      pointRadius: 0, tension: 0.3, fill: false
+    }
+  ];
+  chart.update('none');
+}
+
+function sampleNormal(mu, sigma) {
+  // Box-Muller
+  const u1 = Math.random(), u2 = Math.random();
+  return mu + sigma * Math.sqrt(-2*Math.log(u1)) * Math.cos(2*Math.PI*u2);
+}
+
+initChart();
+update();
+['tvcl','tvv','dose','omega','nsim','sprop'].forEach(id =>
+  document.getElementById(id).addEventListener('input', update)
+);
+</script>
+</body>
+</html>

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Module 03 — Dose Simulator</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="js/pk_engine.js"></script>
+</head>
+<body>
+
+<nav class="topnav">
+  <a href="index.html" class="brand">PopPK Lab</a>
+  <a href="population_model.html">Population PK</a>
+  <a href="covariate_effect.html">Covariates</a>
+  <a href="dose_simulator.html" class="active">Dose Simulator</a>
+  <a href="map_estimation.html">MAP Estimation</a>
+  <a href="mipd_dose_adjustment.html">MIPD</a>
+</nav>
+
+<div class="page">
+  <div class="page-header">
+    <h1>Dose Simulator</h1>
+    <p>RK4 ODE 積分器。支援多次給藥、IV bolus / IV infusion / oral，任意設計給藥方案。</p>
+  </div>
+
+  <div class="grid2">
+    <!-- PK params -->
+    <div class="card">
+      <div class="card-title">PK Parameters</div>
+      <label class="ctrl">
+        <span class="lbl">CL (L/h)</span>
+        <input type="range" id="cl" min="0.02" max="2" step="0.01" value="0.25">
+        <span class="val" id="cl-v">0.25</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">V (L)</span>
+        <input type="range" id="vd" min="1" max="30" step="0.5" value="5">
+        <span class="val" id="vd-v">5.0</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">ka (1/h) — oral only</span>
+        <input type="range" id="ka" min="0.1" max="5" step="0.1" value="1.5">
+        <span class="val" id="ka-v">1.5</span>
+      </label>
+
+      <div class="card-title" style="margin-top:1rem">Repeat Dosing</div>
+      <label class="ctrl">
+        <span class="lbl">Dose (mg)</span>
+        <input type="range" id="rdose" min="50" max="1000" step="50" value="300">
+        <span class="val" id="rdose-v">300</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">Interval τ (h)</span>
+        <input type="range" id="tau" min="6" max="168" step="6" value="24">
+        <span class="val" id="tau-v">24</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">N doses</span>
+        <input type="range" id="ndose" min="1" max="10" step="1" value="3">
+        <span class="val" id="ndose-v">3</span>
+      </label>
+      <label class="ctrl">
+        <span class="lbl">Route</span>
+        <select id="route" style="flex:1;max-width:140px">
+          <option value="iv">IV bolus</option>
+          <option value="oral">Oral</option>
+          <option value="inf">IV infusion</option>
+        </select>
+      </label>
+      <label class="ctrl" id="dur-row" style="display:none">
+        <span class="lbl">Infusion dur (h)</span>
+        <input type="range" id="dur" min="0.5" max="6" step="0.5" value="1">
+        <span class="val" id="dur-v">1.0</span>
+      </label>
+    </div>
+
+    <!-- Stats -->
+    <div>
+      <div class="grid2" style="margin-bottom:1rem">
+        <div class="stat-card">
+          <div class="s-label">Cmax (mg/L)</div>
+          <div class="s-value" id="s-cmax" style="color:var(--danger)">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">Cmin / trough (mg/L)</div>
+          <div class="s-value" id="s-cmin" style="color:var(--accent2)">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">AUC₀–τ (last dose)</div>
+          <div class="s-value" id="s-auc">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">t½ (h)</div>
+          <div class="s-value" id="s-t12">—</div>
+        </div>
+      </div>
+      <!-- Target lines -->
+      <div class="card">
+        <div class="card-title">Target Concentration Lines</div>
+        <label class="ctrl">
+          <span class="lbl">Cmax target</span>
+          <input type="range" id="tmax" min="0" max="20" step="0.5" value="0">
+          <span class="val" id="tmax-v">off</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">Cmin target</span>
+          <input type="range" id="tmin" min="0" max="10" step="0.1" value="0">
+          <span class="val" id="tmin-v">off</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1rem">
+    <div class="chart-wrap" style="height:340px">
+      <canvas id="chart"></canvas>
+    </div>
+    <p class="hint">每個給藥時間點有綠色虛線標記｜橘/綠水平虛線 = 目標濃度</p>
+  </div>
+</div>
+
+<script>
+let chart;
+
+function initChart() {
+  chart = new Chart(document.getElementById('chart').getContext('2d'), {
+    type:'line', data:{datasets:[]},
+    options:{
+      animation:false, responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{type:'linear',title:{display:true,text:'Time (h)',color:'#7a8099'},ticks:{color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'}},
+        y:{title:{display:true,text:'Concentration (mg/L)',color:'#7a8099'},ticks:{color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'},min:0}
+      },
+      plugins:{legend:{display:false}}
+    }
+  });
+}
+
+function trapAUC(sim, t0, t1) {
+  let auc = 0;
+  const pts = sim.filter(r => r.t >= t0 && r.t <= t1);
+  for (let i=1; i<pts.length; i++) {
+    auc += (pts[i].t - pts[i-1].t) * (pts[i].c + pts[i-1].c) / 2;
+  }
+  return auc;
+}
+
+function update() {
+  const cl     = +document.getElementById('cl').value;
+  const vd     = +document.getElementById('vd').value;
+  const ka     = +document.getElementById('ka').value;
+  const rdose  = +document.getElementById('rdose').value;
+  const tau    = +document.getElementById('tau').value;
+  const ndose  = +document.getElementById('ndose').value;
+  const route  = document.getElementById('route').value;
+  const dur    = +document.getElementById('dur').value;
+  const tmax   = +document.getElementById('tmax').value;
+  const tmin   = +document.getElementById('tmin').value;
+
+  document.getElementById('cl-v').textContent    = cl.toFixed(2);
+  document.getElementById('vd-v').textContent    = vd.toFixed(1);
+  document.getElementById('ka-v').textContent    = ka.toFixed(1);
+  document.getElementById('rdose-v').textContent = rdose;
+  document.getElementById('tau-v').textContent   = tau;
+  document.getElementById('ndose-v').textContent = ndose;
+  document.getElementById('dur-v').textContent   = dur.toFixed(1);
+  document.getElementById('tmax-v').textContent  = tmax > 0 ? tmax.toFixed(1) : 'off';
+  document.getElementById('tmin-v').textContent  = tmin > 0 ? tmin.toFixed(1) : 'off';
+  document.getElementById('dur-row').style.display = route==='inf' ? 'flex' : 'none';
+
+  const events = Array.from({length:ndose},(_,i)=>({
+    time: i*tau, amt: rdose,
+    route: route==='inf' ? 'iv' : route,
+    dur:   route==='inf' ? dur : 0
+  }));
+
+  const tEnd = (ndose-1)*tau + Math.max(3*tau, 72);
+  const sim  = simulate(events, {CL:cl, V:vd, ka}, tEnd);
+
+  const cmax = Math.max(...sim.map(r=>r.c));
+  const trough = sim.find(r => Math.abs(r.t - ((ndose-1)*tau + tau - 0.1)) <= 0.15);
+  const cmin = trough ? trough.c : sim[sim.length-1].c;
+  const auc  = ndose > 1 ? trapAUC(sim, (ndose-1)*tau, (ndose-1)*tau+tau) : trapAUC(sim,0,tau);
+  const t12  = Math.log(2)/(cl/vd);
+
+  document.getElementById('s-cmax').textContent = cmax.toFixed(2);
+  document.getElementById('s-cmin').textContent = cmin.toFixed(3);
+  document.getElementById('s-auc').textContent  = auc.toFixed(1);
+  document.getElementById('s-t12').textContent  = t12.toFixed(1);
+
+  const datasets = [{
+    data: sim.map(r=>({x:r.t,y:r.c})),
+    borderColor:'#6c8fff', borderWidth:2.5,
+    pointRadius:0, tension:0.3, fill:false
+  }];
+
+  // Dose marker annotations via vertical segments
+  events.forEach(ev => {
+    datasets.push({
+      data:[{x:ev.time,y:0},{x:ev.time,y:cmax*1.1}],
+      borderColor:'rgba(61,214,163,0.3)', borderWidth:1,
+      borderDash:[3,3], pointRadius:0, tension:0
+    });
+  });
+
+  if (tmax > 0) datasets.push({
+    data:[{x:0,y:tmax},{x:tEnd,y:tmax}],
+    borderColor:'rgba(240,107,107,0.6)', borderWidth:1.5,
+    borderDash:[6,4], pointRadius:0, tension:0
+  });
+  if (tmin > 0) datasets.push({
+    data:[{x:0,y:tmin},{x:tEnd,y:tmin}],
+    borderColor:'rgba(244,164,74,0.6)', borderWidth:1.5,
+    borderDash:[6,4], pointRadius:0, tension:0
+  });
+
+  chart.data.datasets = datasets;
+  chart.update('none');
+}
+
+document.getElementById('route').addEventListener('change', update);
+initChart();
+update();
+['cl','vd','ka','rdose','tau','ndose','dur','tmax','tmin'].forEach(id =>
+  document.getElementById(id).addEventListener('input', update)
+);
+</script>
+</body>
+</html>

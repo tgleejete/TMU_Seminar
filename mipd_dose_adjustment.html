@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Module 05 — MIPD Precision Dosing</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="js/pk_engine.js"></script>
+</head>
+<body>
+
+<nav class="topnav">
+  <a href="index.html" class="brand">PopPK Lab</a>
+  <a href="population_model.html">Population PK</a>
+  <a href="covariate_effect.html">Covariates</a>
+  <a href="dose_simulator.html">Dose Simulator</a>
+  <a href="map_estimation.html">MAP Estimation</a>
+  <a href="mipd_dose_adjustment.html" class="active">MIPD</a>
+</nav>
+
+<div class="page">
+  <div class="page-header">
+    <h1>MIPD Precision Dosing</h1>
+    <p>完整 Model-Informed Precision Dosing 流程：過去給藥 + 觀測 DV → MAP 估計個體 CL → 最佳化下一劑量達到目標濃度。</p>
+  </div>
+
+  <!-- Step indicator -->
+  <div style="display:flex;gap:0;margin-bottom:1.5rem;border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden">
+    <div style="flex:1;padding:0.75rem 1rem;background:rgba(108,143,255,0.1);border-right:1px solid var(--border)">
+      <div style="font-size:10px;color:var(--accent);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px">Step 1</div>
+      <div style="font-size:13px;font-weight:500">Patient data</div>
+    </div>
+    <div style="flex:1;padding:0.75rem 1rem;background:rgba(108,143,255,0.06);border-right:1px solid var(--border)">
+      <div style="font-size:10px;color:var(--accent2);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px">Step 2</div>
+      <div style="font-size:13px;font-weight:500">MAP estimation</div>
+    </div>
+    <div style="flex:1;padding:0.75rem 1rem;background:rgba(244,164,74,0.06)">
+      <div style="font-size:10px;color:var(--warn);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px">Step 3</div>
+      <div style="font-size:13px;font-weight:500">Dose optimisation</div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <!-- Step 1+2: inputs -->
+    <div>
+      <div class="card">
+        <div class="card-title">Step 1 — Population Model</div>
+        <label class="ctrl">
+          <span class="lbl">TVCL (L/h)</span>
+          <input type="range" id="tvcl" min="0.05" max="2" step="0.01" value="0.25">
+          <span class="val" id="tvcl-v">0.25</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">TVV (L)</span>
+          <input type="range" id="tvv" min="1" max="20" step="0.5" value="5">
+          <span class="val" id="tvv-v">5.0</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">ω² (IIV CL)</span>
+          <input type="range" id="omega2" min="0.01" max="0.8" step="0.01" value="0.1">
+          <span class="val" id="omega2-v">0.10</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">σ_prop</span>
+          <input type="range" id="sprop" min="0.01" max="0.5" step="0.01" value="0.2">
+          <span class="val" id="sprop-v">0.20</span>
+        </label>
+      </div>
+
+      <div class="card" style="margin-top:1rem">
+        <div class="card-title">Patient Covariates & History</div>
+        <label class="ctrl">
+          <span class="lbl">WT (kg)</span>
+          <input type="range" id="wt" min="30" max="150" step="1" value="60">
+          <span class="val" id="wt-v">60</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">Past dose (mg)</span>
+          <input type="range" id="pd" min="50" max="1000" step="50" value="300">
+          <span class="val" id="pd-v">300</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">DV @ t=14 h</span>
+          <input type="range" id="dv1" min="0.1" max="10" step="0.1" value="3.5">
+          <span class="val" id="dv1-v">3.5</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">DV @ t=36 h (0=off)</span>
+          <input type="range" id="dv2" min="0" max="5" step="0.1" value="0">
+          <span class="val" id="dv2-v">off</span>
+        </label>
+      </div>
+
+      <div class="card" style="margin-top:1rem">
+        <div class="card-title">Step 3 — Dosing Target</div>
+        <label class="ctrl">
+          <span class="lbl">Target Cmin (mg/L)</span>
+          <input type="range" id="ctarget" min="0.5" max="10" step="0.1" value="1.5">
+          <span class="val" id="ctarget-v">1.5</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">Next dose τ (h)</span>
+          <input type="range" id="nexttau" min="12" max="168" step="12" value="48">
+          <span class="val" id="nexttau-v">48</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">N future doses</span>
+          <input type="range" id="nfuture" min="1" max="6" step="1" value="3">
+          <span class="val" id="nfuture-v">3</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Step 2+3: results -->
+    <div>
+      <!-- MAP results -->
+      <div class="card">
+        <div class="card-title">Step 2 — MAP Results</div>
+        <div class="grid2">
+          <div class="stat-card">
+            <div class="s-label">Pop CL (L/h)</div>
+            <div class="s-value" id="s-popcl" style="color:var(--muted)">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="s-label">MAP η*</div>
+            <div class="s-value" id="s-eta" style="color:var(--accent2)">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="s-label">Individual CL</div>
+            <div class="s-value" id="s-indcl" style="color:var(--accent)">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="s-label">OFV</div>
+            <div class="s-value" id="s-ofv">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MIPD recommendation -->
+      <div class="card" style="margin-top:1rem;border-color:rgba(244,164,74,0.35)">
+        <div class="card-title" style="color:var(--warn)">Step 3 — Dose Recommendation</div>
+        <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:0.5rem">
+          <div style="font-size:3rem;font-weight:600;font-family:var(--mono);color:var(--warn)" id="s-recdose">—</div>
+          <div style="color:var(--muted);font-size:14px">mg / next dose</div>
+        </div>
+        <div class="grid2" style="margin-top:0.5rem">
+          <div class="stat-card">
+            <div class="s-label">Predicted Cmin</div>
+            <div class="s-value" id="s-predcmin" style="color:var(--accent2)">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="s-label">Target Cmin</div>
+            <div class="s-value" id="s-targetcmin" style="color:var(--warn)">—</div>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:8px">劑量以 50 mg 為單位四捨五入。預測 Cmin 為第 1 個未來 trough 值。</p>
+      </div>
+
+      <!-- Shrinkage indicator -->
+      <div class="card" style="margin-top:1rem">
+        <div class="card-title">ETA Shrinkage</div>
+        <div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;margin-bottom:6px">
+          <div id="shrink-bar" style="height:100%;background:var(--accent2);border-radius:4px;transition:width 0.3s;width:0%"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)">
+          <span>0% (η fully drives estimate)</span>
+          <span id="shrink-pct">—</span>
+          <span>100% (pure shrinkage)</span>
+        </div>
+        <p class="hint">Shrinkage = 1 − |η*| / E[|η|] ≈ 1 − |η*| / √(ω²·π/2)</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Combined PK chart -->
+  <div class="card" style="margin-top:1rem">
+    <div class="card-title">Full PK Profile — past doses + MAP posterior + recommended future doses</div>
+    <div class="chart-wrap" style="height:320px">
+      <canvas id="chart-pk"></canvas>
+    </div>
+    <p class="hint">
+      灰色區域 = 過去 (observed) | 藍實線 = MAP posterior prediction | 橘圓點 = 觀測 DV |
+      金色實線 = 推薦劑量預測 | 橘水平虛線 = 目標 Cmin
+    </p>
+  </div>
+</div>
+
+<script>
+let chartPK;
+
+function initChart() {
+  chartPK = new Chart(document.getElementById('chart-pk').getContext('2d'), {
+    type:'line', data:{datasets:[]},
+    options:{
+      animation:false, responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{type:'linear',title:{display:true,text:'Time (h)',color:'#7a8099'},ticks:{color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'}},
+        y:{title:{display:true,text:'Concentration (mg/L)',color:'#7a8099'},ticks:{color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'},min:0}
+      },
+      plugins:{legend:{labels:{color:'#7a8099',boxWidth:12}}}
+    }
+  });
+}
+
+function update() {
+  const tvcl    = +document.getElementById('tvcl').value;
+  const tvv     = +document.getElementById('tvv').value;
+  const omega2  = +document.getElementById('omega2').value;
+  const sprop   = +document.getElementById('sprop').value;
+  const wt      = +document.getElementById('wt').value;
+  const pd      = +document.getElementById('pd').value;
+  const dv1     = +document.getElementById('dv1').value;
+  const dv2     = +document.getElementById('dv2').value;
+  const ctarget = +document.getElementById('ctarget').value;
+  const nexttau = +document.getElementById('nexttau').value;
+  const nfuture = +document.getElementById('nfuture').value;
+
+  document.getElementById('tvcl-v').textContent  = tvcl.toFixed(2);
+  document.getElementById('tvv-v').textContent   = tvv.toFixed(1);
+  document.getElementById('omega2-v').textContent= omega2.toFixed(2);
+  document.getElementById('sprop-v').textContent = sprop.toFixed(2);
+  document.getElementById('wt-v').textContent    = wt;
+  document.getElementById('pd-v').textContent    = pd;
+  document.getElementById('dv1-v').textContent   = dv1.toFixed(1);
+  document.getElementById('dv2-v').textContent   = dv2 > 0 ? dv2.toFixed(1) : 'off';
+  document.getElementById('ctarget-v').textContent = ctarget.toFixed(1);
+  document.getElementById('nexttau-v').textContent = nexttau;
+  document.getElementById('nfuture-v').textContent = nfuture;
+
+  const cl_pop = popCL(tvcl, wt);
+  const pastEvents = [{time:0, amt:pd, route:'iv', dur:0}];
+  const obs = [{t:14, dv:dv1}];
+  if (dv2 > 0) obs.push({t:36, dv:dv2});
+
+  const { eta, ofv } = mapEstimate(cl_pop, tvv, omega2, sprop*sprop, 0.01, obs, pastEvents);
+  const cl_ind = cl_pop * Math.exp(eta);
+
+  document.getElementById('s-popcl').textContent = cl_pop.toFixed(3);
+  document.getElementById('s-eta').textContent   = eta.toFixed(4);
+  document.getElementById('s-indcl').textContent = cl_ind.toFixed(3);
+  document.getElementById('s-ofv').textContent   = ofv.toFixed(3);
+
+  // Shrinkage
+  const expAbsEta = Math.sqrt(omega2 * Math.PI / 2);
+  const shrink = Math.max(0, Math.min(1, 1 - Math.abs(eta)/expAbsEta));
+  document.getElementById('shrink-bar').style.width = (shrink*100).toFixed(1)+'%';
+  document.getElementById('shrink-pct').textContent = (shrink*100).toFixed(1)+'%';
+
+  // Find optimal dose: starting from t_next (say t=48h)
+  const tNext = 48;
+  const recDose = findOptimalDose(ctarget, nexttau, {CL:cl_ind, V:tvv}, 'iv', nfuture);
+  const roundedDose = Math.round(recDose/50)*50;
+
+  // Predicted cmin with recommended dose
+  const futureEvents = Array.from({length:nfuture},(_,i)=>({time:tNext+i*nexttau,amt:roundedDose,route:'iv',dur:0}));
+  const futureSim = simulate([...pastEvents, ...futureEvents], {CL:cl_ind, V:tvv}, tNext+nfuture*nexttau+10);
+  const tTrough = tNext + nexttau - 0.1;
+  const troughRow = futureSim.reduce((a,b)=>Math.abs(b.t-tTrough)<Math.abs(a.t-tTrough)?b:a);
+
+  document.getElementById('s-recdose').textContent   = roundedDose;
+  document.getElementById('s-predcmin').textContent  = troughRow.c.toFixed(3);
+  document.getElementById('s-targetcmin').textContent= ctarget.toFixed(1);
+
+  // Chart
+  const pastEnd = Math.max(...obs.map(o=>o.t)) + 8;
+  const pastSim  = simulate(pastEvents, {CL:cl_ind, V:tvv}, pastEnd);
+  const tEnd     = tNext + nfuture*nexttau + 12;
+
+  const datasets = [
+    { label:'MAP posterior (past)',
+      data: pastSim.map(r=>({x:r.t,y:r.c})),
+      borderColor:'#6c8fff', borderWidth:2, pointRadius:0, tension:0.3, fill:false },
+    { label:`Recommended (${roundedDose} mg × ${nfuture})`,
+      data: futureSim.filter(r=>r.t>=tNext-0.5).map(r=>({x:r.t,y:r.c})),
+      borderColor:'#f4a44a', borderWidth:2.5, pointRadius:0, tension:0.3, fill:false },
+    { label:'Target Cmin',
+      data:[{x:tNext,y:ctarget},{x:tEnd,y:ctarget}],
+      borderColor:'rgba(244,164,74,0.45)', borderWidth:1.5, borderDash:[6,4],
+      pointRadius:0, fill:false }
+  ];
+
+  // Observed DV points
+  obs.forEach(o => {
+    datasets.push({
+      data:[{x:o.t,y:o.dv}],
+      borderWidth:0, pointRadius:8,
+      pointBackgroundColor:'#f06b6b', showLine:false
+    });
+  });
+
+  // Future dose markers
+  futureEvents.forEach(ev => {
+    datasets.push({
+      data:[{x:ev.time,y:0},{x:ev.time,y:troughRow.c*2}],
+      borderColor:'rgba(244,164,74,0.25)', borderWidth:1, borderDash:[3,3],
+      pointRadius:0
+    });
+  });
+
+  chartPK.data.datasets = datasets;
+  chartPK.update('none');
+}
+
+initChart();
+update();
+['tvcl','tvv','omega2','sprop','wt','pd','dv1','dv2','ctarget','nexttau','nfuture'].forEach(id =>
+  document.getElementById(id).addEventListener('input', update)
+);
+</script>
+</body>
+</html>

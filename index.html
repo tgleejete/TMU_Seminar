@@ -1,23 +1,81 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
 <head>
-<title>PopPK Interactive Lab</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PopPK Interactive Lab — TMU</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
-
 <body>
 
-<h1>PopPK Interactive Teaching Platform</h1>
+<nav class="topnav">
+  <a href="index.html" class="brand">PopPK Lab</a>
+  <a href="population_model.html">Population PK</a>
+  <a href="covariate_effect.html">Covariates</a>
+  <a href="dose_simulator.html">Dose Simulator</a>
+  <a href="map_estimation.html">MAP Estimation</a>
+  <a href="mipd_dose_adjustment.html">MIPD</a>
+</nav>
 
-<p>Interactive modules for Population Pharmacokinetics and Bayesian MIPD.</p>
+<div class="page">
+  <div class="hero">
+    <p class="eyebrow">TMU Pharmacometrics Seminar</p>
+    <h1>Population PK<br>Interactive Lab</h1>
+    <p>五個互動模組，帶你從族群模型建構到 MAP Bayesian 個體化給藥的完整 workflow。</p>
+  </div>
 
-<ul>
-<li><a href="population_model.html">Population PK Model</a></li>
-<li><a href="covariate_effect.html">Covariate Effects</a></li>
-<li><a href="dose_simulator.html">Dose Simulation</a></li>
-<li><a href="map_estimation.html">MAP Bayesian Estimation</a></li>
-<li><a href="mipd_dose_adjustment.html">Precision Dosing</a></li>
-</ul>
+  <div class="module-grid">
+    <a href="population_model.html" class="module-card">
+      <div class="mc-num">Module 01</div>
+      <div class="mc-title">Population PK Model</div>
+      <div class="mc-desc">一室 / 二室模型探索。調整 CL、V 觀察濃度–時間曲線，理解 ODE 積分邏輯。</div>
+      <div class="mc-tags">
+        <span class="badge badge-blue">1-CMT</span>
+        <span class="badge badge-blue">ODE</span>
+      </div>
+    </a>
+    <a href="covariate_effect.html" class="module-card">
+      <div class="mc-num">Module 02</div>
+      <div class="mc-title">Covariate Effects</div>
+      <div class="mc-desc">WT、ALB 等共變量如何透過 power / linear 函數改變族群參數均值。</div>
+      <div class="mc-tags">
+        <span class="badge badge-green">WT scaling</span>
+        <span class="badge badge-green">ALB effect</span>
+      </div>
+    </a>
+    <a href="dose_simulator.html" class="module-card">
+      <div class="mc-num">Module 03</div>
+      <div class="mc-title">Dose Simulator</div>
+      <div class="mc-desc">任意給藥方案（多次給藥、IV / oral）的 RK4 模擬，即時顯示 AUC、Cmax、Cmin。</div>
+      <div class="mc-tags">
+        <span class="badge badge-warn">Multi-dose</span>
+        <span class="badge badge-warn">RK4</span>
+      </div>
+    </a>
+    <a href="map_estimation.html" class="module-card">
+      <div class="mc-num">Module 04</div>
+      <div class="mc-title">MAP Bayesian Estimation</div>
+      <div class="mc-desc">輸入觀測 DV，即時求解後驗 ETA，視覺化 OFV 先驗項與殘差項的競爭。</div>
+      <div class="mc-tags">
+        <span class="badge badge-blue">OFV</span>
+        <span class="badge badge-blue">Shrinkage</span>
+      </div>
+    </a>
+    <a href="mipd_dose_adjustment.html" class="module-card">
+      <div class="mc-num">Module 05</div>
+      <div class="mc-title">MIPD Precision Dosing</div>
+      <div class="mc-desc">完整 MIPD 流程：輸入病人資料 → MAP 估計個體 CL → 最佳化下一劑量達到目標濃度。</div>
+      <div class="mc-tags">
+        <span class="badge badge-green">TDM</span>
+        <span class="badge badge-green">Target attainment</span>
+      </div>
+    </a>
+  </div>
+
+  <p style="margin-top:3rem;font-size:12px;color:var(--muted)">
+    Taipei Medical University · Pharmacometrics Seminar · Built with vanilla JS + Chart.js
+  </p>
+</div>
 
 </body>
 </html>

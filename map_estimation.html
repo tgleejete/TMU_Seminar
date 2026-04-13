@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Module 04 — MAP Bayesian Estimation</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="js/pk_engine.js"></script>
+</head>
+<body>
+
+<nav class="topnav">
+  <a href="index.html" class="brand">PopPK Lab</a>
+  <a href="population_model.html">Population PK</a>
+  <a href="covariate_effect.html">Covariates</a>
+  <a href="dose_simulator.html">Dose Simulator</a>
+  <a href="map_estimation.html" class="active">MAP Estimation</a>
+  <a href="mipd_dose_adjustment.html">MIPD</a>
+</nav>
+
+<div class="page">
+  <div class="page-header">
+    <h1>MAP Bayesian Estimation</h1>
+    <p>輸入病人 DV 後，即時求解後驗 η*，同時顯示 OFV landscape（先驗項 vs 殘差項的競爭）。</p>
+  </div>
+
+  <div class="eq-box">
+    OFV(η) = η²/ω² &nbsp;+&nbsp; Σ (DV − IPRED)² / (σ²_prop · IPRED² + σ²_add)
+  </div>
+
+  <div class="grid2" style="margin-top:1.2rem">
+    <!-- Left: model + patient -->
+    <div>
+      <div class="card">
+        <div class="card-title">Population Model</div>
+        <label class="ctrl">
+          <span class="lbl">TVCL (L/h)</span>
+          <input type="range" id="tvcl" min="0.05" max="1" step="0.01" value="0.25">
+          <span class="val" id="tvcl-v">0.25</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">TVV (L)</span>
+          <input type="range" id="tvv" min="1" max="20" step="0.5" value="5">
+          <span class="val" id="tvv-v">5.0</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">ω² (IIV CL)</span>
+          <input type="range" id="omega2" min="0.01" max="0.8" step="0.01" value="0.1">
+          <span class="val" id="omega2-v">0.10</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">σ_prop</span>
+          <input type="range" id="sprop" min="0.01" max="0.5" step="0.01" value="0.2">
+          <span class="val" id="sprop-v">0.20</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">σ_add (mg/L)</span>
+          <input type="range" id="sadd" min="0" max="1" step="0.05" value="0.1">
+          <span class="val" id="sadd-v">0.10</span>
+        </label>
+      </div>
+
+      <div class="card" style="margin-top:1rem">
+        <div class="card-title">Patient Dose History</div>
+        <label class="ctrl">
+          <span class="lbl">Dose 1 (mg)</span>
+          <input type="range" id="d1" min="50" max="1000" step="50" value="300">
+          <span class="val" id="d1-v">300</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">Dose 2 (mg, 0=none)</span>
+          <input type="range" id="d2" min="0" max="1000" step="50" value="0">
+          <span class="val" id="d2-v">none</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">Dose 2 time (h)</span>
+          <input type="range" id="t2" min="24" max="168" step="12" value="72">
+          <span class="val" id="t2-v">72</span>
+        </label>
+      </div>
+
+      <div class="card" style="margin-top:1rem">
+        <div class="card-title">Observed Concentrations (DV)</div>
+        <label class="ctrl">
+          <span class="lbl">DV₁ @ t=14 h</span>
+          <input type="range" id="dv1" min="0.1" max="10" step="0.1" value="3.5">
+          <span class="val" id="dv1-v">3.5</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">DV₂ @ t=80 h (0=off)</span>
+          <input type="range" id="dv2" min="0" max="5" step="0.1" value="0">
+          <span class="val" id="dv2-v">off</span>
+        </label>
+        <label class="ctrl">
+          <span class="lbl">WT (kg, covariate)</span>
+          <input type="range" id="wt" min="30" max="150" step="1" value="60">
+          <span class="val" id="wt-v">60</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Right: results + OFV chart -->
+    <div>
+      <div class="grid2" style="margin-bottom:1rem">
+        <div class="stat-card">
+          <div class="s-label">Pop CL (L/h)</div>
+          <div class="s-value" id="s-popcl" style="color:var(--muted)">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">MAP η*</div>
+          <div class="s-value" id="s-eta" style="color:var(--accent2)">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">Individual CL</div>
+          <div class="s-value" id="s-indcl" style="color:var(--accent)">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">Total OFV</div>
+          <div class="s-value" id="s-ofv">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">Prior term</div>
+          <div class="s-value" id="s-prior" style="color:#7F77DD">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="s-label">Residual term</div>
+          <div class="s-value" id="s-resid" style="color:#D85A30">—</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">OFV Landscape</div>
+        <div class="chart-wrap" style="height:220px">
+          <canvas id="chart-ofv"></canvas>
+        </div>
+        <p class="hint">紫虛線 = 先驗項 | 橘虛線 = 殘差項 | 深色實線 = 總 OFV | 綠點 = η*</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- PK prediction chart -->
+  <div class="card" style="margin-top:1rem">
+    <div class="card-title">PK Prediction — population vs individual (MAP)</div>
+    <div class="chart-wrap" style="height:280px">
+      <canvas id="chart-pk"></canvas>
+    </div>
+    <p class="hint">藍虛線 = 族群預測 | 綠實線 = MAP 個體預測 | 橘圓點 = 觀測 DV | 虛線垂線 = 殘差</p>
+  </div>
+</div>
+
+<script>
+let chartOFV, chartPK;
+
+function initCharts() {
+  chartOFV = new Chart(document.getElementById('chart-ofv').getContext('2d'), {
+    type:'line', data:{datasets:[]},
+    options:{
+      animation:false, responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{type:'linear',title:{display:true,text:'η',color:'#7a8099'},ticks:{color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'}},
+        y:{title:{display:true,text:'OFV',color:'#7a8099'},ticks:{color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'},min:0}
+      },
+      plugins:{legend:{display:false}}
+    }
+  });
+
+  chartPK = new Chart(document.getElementById('chart-pk').getContext('2d'), {
+    type:'line', data:{datasets:[]},
+    options:{
+      animation:false, responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{type:'linear',title:{display:true,text:'Time (h)',color:'#7a8099'},ticks:{color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'}},
+        y:{title:{display:true,text:'Concentration (mg/L)',color:'#7a8099'},ticks:{color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'},min:0}
+      },
+      plugins:{legend:{labels:{color:'#7a8099',boxWidth:12}}}
+    }
+  });
+}
+
+function update() {
+  const tvcl   = +document.getElementById('tvcl').value;
+  const tvv    = +document.getElementById('tvv').value;
+  const omega2 = +document.getElementById('omega2').value;
+  const sprop  = +document.getElementById('sprop').value;
+  const sadd   = +document.getElementById('sadd').value;
+  const d1     = +document.getElementById('d1').value;
+  const d2     = +document.getElementById('d2').value;
+  const t2     = +document.getElementById('t2').value;
+  const dv1    = +document.getElementById('dv1').value;
+  const dv2    = +document.getElementById('dv2').value;
+  const wt     = +document.getElementById('wt').value;
+
+  document.getElementById('tvcl-v').textContent  = tvcl.toFixed(2);
+  document.getElementById('tvv-v').textContent   = tvv.toFixed(1);
+  document.getElementById('omega2-v').textContent= omega2.toFixed(2);
+  document.getElementById('sprop-v').textContent = sprop.toFixed(2);
+  document.getElementById('sadd-v').textContent  = sadd.toFixed(2);
+  document.getElementById('d1-v').textContent    = d1;
+  document.getElementById('d2-v').textContent    = d2 > 0 ? d2 : 'none';
+  document.getElementById('t2-v').textContent    = t2;
+  document.getElementById('dv1-v').textContent   = dv1.toFixed(1);
+  document.getElementById('dv2-v').textContent   = dv2 > 0 ? dv2.toFixed(1) : 'off';
+  document.getElementById('wt-v').textContent    = wt;
+
+  const cl_pop = popCL(tvcl, wt);
+  const events = [{time:0,amt:d1,route:'iv',dur:0}];
+  if (d2 > 0) events.push({time:t2,amt:d2,route:'iv',dur:0});
+
+  const obs = [{t:14, dv:dv1}];
+  if (dv2 > 0) obs.push({t:Math.max(t2+4,80), dv:dv2});
+
+  const { eta, ofv } = mapEstimate(cl_pop, tvv, omega2, sprop*sprop, sadd*sadd, obs, events);
+  const cl_ind = cl_pop * Math.exp(eta);
+
+  const priorV = (eta*eta)/omega2;
+  const residV = computeOFV(eta, cl_pop, tvv, omega2, sprop*sprop, sadd*sadd, obs, events) - priorV;
+
+  document.getElementById('s-popcl').textContent = cl_pop.toFixed(3);
+  document.getElementById('s-eta').textContent   = eta.toFixed(4);
+  document.getElementById('s-indcl').textContent = cl_ind.toFixed(3);
+  document.getElementById('s-ofv').textContent   = ofv.toFixed(3);
+  document.getElementById('s-prior').textContent = priorV.toFixed(3);
+  document.getElementById('s-resid').textContent = residV.toFixed(3);
+
+  // OFV landscape
+  const etaRange = Array.from({length:200},(_,i)=>-3 + i*6/199);
+  const priorVals = etaRange.map(e => (e*e)/omega2);
+  const residVals = etaRange.map(e => computeOFV(e, cl_pop, tvv, omega2, sprop*sprop, sadd*sadd, obs, events) - (e*e)/omega2);
+  const ofvVals   = etaRange.map((e,i) => priorVals[i] + residVals[i]);
+  const maxOFV    = Math.min(Math.max(...ofvVals)*1.1, 50);
+
+  chartOFV.data.datasets = [
+    { data: etaRange.map((e,i)=>({x:e,y:Math.min(priorVals[i],maxOFV)})),
+      borderColor:'rgba(127,119,221,0.7)', borderWidth:1.5, borderDash:[4,3],
+      pointRadius:0, tension:0.3, fill:false },
+    { data: etaRange.map((e,i)=>({x:e,y:Math.min(residVals[i],maxOFV)})),
+      borderColor:'rgba(216,90,48,0.7)', borderWidth:1.5, borderDash:[4,3],
+      pointRadius:0, tension:0.3, fill:false },
+    { data: etaRange.map((e,i)=>({x:e,y:Math.min(ofvVals[i],maxOFV)})),
+      borderColor:'var(--text)', borderWidth:2,
+      pointRadius:0, tension:0.3, fill:false },
+    { data:[{x:eta, y:ofv}],
+      borderColor:'#3dd6a3', borderWidth:0,
+      pointRadius:7, pointBackgroundColor:'#3dd6a3', showLine:false }
+  ];
+  chartOFV.options.scales.y.max = maxOFV;
+  chartOFV.update('none');
+
+  // PK curves
+  const tEnd = Math.max(100, (events[events.length-1]?.time||0) + 72);
+  const popSim = simulate(events, {CL:cl_pop, V:tvv}, tEnd);
+  const indSim = simulate(events, {CL:cl_ind, V:tvv}, tEnd);
+
+  const datasets = [
+    { label:'Population (η=0)', data:popSim.map(r=>({x:r.t,y:r.c})),
+      borderColor:'rgba(122,128,153,0.7)', borderWidth:1.5, borderDash:[5,4],
+      pointRadius:0, tension:0.3, fill:false },
+    { label:'MAP individual', data:indSim.map(r=>({x:r.t,y:r.c})),
+      borderColor:'#3dd6a3', borderWidth:2.5,
+      pointRadius:0, tension:0.3, fill:false },
+  ];
+
+  // Observed points + residual segments
+  obs.forEach(o => {
+    const ipred = indSim.reduce((a,b)=>Math.abs(b.t-o.t)<Math.abs(a.t-o.t)?b:a).c;
+    datasets.push({
+      data:[{x:o.t,y:o.dv}],
+      borderColor:'#f4a44a', borderWidth:0,
+      pointRadius:8, pointBackgroundColor:'#f4a44a', showLine:false
+    });
+    datasets.push({
+      data:[{x:o.t,y:o.dv},{x:o.t,y:ipred}],
+      borderColor:'rgba(244,164,74,0.4)', borderWidth:1.5, borderDash:[2,2],
+      pointRadius:0
+    });
+  });
+
+  chartPK.data.datasets = datasets;
+  chartPK.update('none');
+}
+
+initCharts();
+update();
+['tvcl','tvv','omega2','sprop','sadd','d1','d2','t2','dv1','dv2','wt'].forEach(id =>
+  document.getElementById(id).addEventListener('input', update)
+);
+</script>
+</body>
+</html>
