@@ -1,0 +1,25 @@
+<h2>Covariate Model</h2>
+
+Weight:
+<input id="wt" value="70">
+
+<button onclick="calcCL()">Calculate CL</button>
+
+<p id="result"></p>
+
+<script>
+
+function calcCL(){
+
+let wt = document.getElementById("wt").value
+
+let CLpop = 5
+
+let CL = CLpop * Math.pow(wt/70,0.75)
+
+document.getElementById("result").innerHTML =
+"CL = " + CL.toFixed(2)
+
+}
+
+</script>
