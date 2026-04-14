@@ -1,1 +1,223 @@
+/* TMU PopPK Interactive Lab — shared stylesheet */
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Literata:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@400;500;600&display=swap');
 
+:root {
+  --bg:        #0f1117;
+  --surface:   #181c26;
+  --surface2:  #1e2333;
+  --border:    rgba(255,255,255,0.08);
+  --border2:   rgba(255,255,255,0.14);
+  --text:      #e8eaf0;
+  --muted:     #7a8099;
+  --accent:    #6c8fff;
+  --accent2:   #3dd6a3;
+  --warn:      #f4a44a;
+  --danger:    #f06b6b;
+  --radius:    10px;
+  --radius-lg: 16px;
+  --mono:      'DM Mono', monospace;
+  --sans:      'DM Sans', sans-serif;
+  --serif:     'Literata', Georgia, serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 15px; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+/* ── Top nav ── */
+.topnav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(15,17,23,0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+  display: flex; align-items: center; gap: 0; height: 52px;
+}
+.topnav .brand {
+  font-family: var(--mono); font-size: 13px; font-weight: 500;
+  color: var(--accent); letter-spacing: 0.04em;
+  text-decoration: none; margin-right: 2rem; white-space: nowrap;
+}
+.topnav a {
+  color: var(--muted); text-decoration: none;
+  font-size: 13px; padding: 0 0.9rem; height: 52px;
+  display: flex; align-items: center;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.topnav a:hover { color: var(--text); }
+.topnav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ── Page layout ── */
+.page { max-width: 1080px; margin: 0 auto; padding: 2.5rem 2rem 4rem; }
+
+.page-header { margin-bottom: 2rem; }
+.page-header h1 {
+  font-family: var(--serif); font-size: 1.9rem; font-weight: 600;
+  color: var(--text); line-height: 1.25;
+}
+.page-header p { color: var(--muted); margin-top: 0.4rem; font-size: 0.93rem; max-width: 640px; }
+
+/* ── Cards ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.4rem 1.6rem;
+}
+.card + .card { margin-top: 1rem; }
+.card-title {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 1rem;
+}
+
+/* ── Grid helpers ── */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.grid3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; }
+.grid4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 0.75rem; }
+@media (max-width: 700px) {
+  .grid2, .grid3, .grid4 { grid-template-columns: 1fr; }
+}
+
+/* ── Form controls ── */
+label.ctrl { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.75rem; }
+label.ctrl span.lbl {
+  font-size: 12px; color: var(--muted); min-width: 120px; flex-shrink: 0;
+}
+label.ctrl span.val {
+  font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--accent2);
+  min-width: 52px; text-align: right;
+}
+
+input[type=range] {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 4px; background: var(--surface2); border-radius: 2px; outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--accent);
+  cursor: pointer; border: 2px solid var(--bg);
+  transition: transform 0.1s;
+}
+input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+input[type=range]::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); cursor: pointer;
+  border: 2px solid var(--bg);
+}
+
+input[type=number], input[type=text], select {
+  background: var(--surface2); border: 1px solid var(--border2);
+  color: var(--text); border-radius: var(--radius);
+  padding: 0.4rem 0.75rem; font-family: var(--mono); font-size: 13px;
+  outline: none; transition: border-color 0.15s;
+  width: 100%;
+}
+input[type=number]:focus, select:focus { border-color: var(--accent); }
+
+button.btn {
+  background: var(--accent); color: #0f1117;
+  border: none; border-radius: var(--radius);
+  padding: 0.5rem 1.2rem; font-family: var(--sans);
+  font-weight: 600; font-size: 13px; cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+button.btn:hover { opacity: 0.88; }
+button.btn:active { transform: scale(0.97); }
+button.btn.secondary {
+  background: var(--surface2); color: var(--text);
+  border: 1px solid var(--border2);
+}
+
+/* ── Stat cards ── */
+.stat-card {
+  background: var(--surface2); border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+}
+.stat-card .s-label { font-size: 11px; color: var(--muted); margin-bottom: 0.3rem; }
+.stat-card .s-value {
+  font-family: var(--mono); font-size: 1.5rem; font-weight: 500; color: var(--text);
+}
+.stat-card .s-unit { font-size: 11px; color: var(--muted); margin-left: 4px; }
+
+/* ── Chart canvas wrapper ── */
+.chart-wrap {
+  position: relative; width: 100%; border-radius: var(--radius);
+  overflow: hidden; background: var(--surface2);
+}
+.chart-wrap canvas { display: block; width: 100% !important; }
+
+/* ── Dose event table ── */
+.dose-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dose-table th {
+  text-align: left; padding: 0.4rem 0.75rem;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); border-bottom: 1px solid var(--border);
+}
+.dose-table td { padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); }
+.dose-table tr:last-child td { border-bottom: none; }
+.dose-table input { padding: 0.3rem 0.5rem; font-size: 12px; }
+
+/* ── Badge ── */
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+}
+.badge-blue { background: rgba(108,143,255,0.15); color: var(--accent); }
+.badge-green { background: rgba(61,214,163,0.15); color: var(--accent2); }
+.badge-warn  { background: rgba(244,164,74,0.15); color: var(--warn); }
+
+/* ── Equation display ── */
+.eq-box {
+  background: var(--surface2); border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 0.8rem 1rem; font-family: var(--mono); font-size: 13px;
+  color: var(--accent2); margin: 0.75rem 0;
+}
+
+/* ── Hint text ── */
+.hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* ── Index hero ── */
+.hero {
+  min-height: 260px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  padding: 0 0 2rem;
+}
+.hero .eyebrow {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+  color: var(--accent); text-transform: uppercase; margin-bottom: 0.75rem;
+}
+.hero h1 {
+  font-family: var(--serif); font-size: clamp(2rem, 5vw, 3.2rem);
+  font-weight: 600; line-height: 1.15; color: var(--text);
+  max-width: 640px;
+}
+.hero p { color: var(--muted); max-width: 520px; margin-top: 0.75rem; }
+
+/* Module card grid (index) */
+.module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 1rem; margin-top: 2rem; }
+.module-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 1.4rem;
+  text-decoration: none; color: var(--text);
+  transition: border-color 0.2s, transform 0.15s;
+  display: block;
+}
+.module-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.module-card .mc-num {
+  font-family: var(--mono); font-size: 11px; color: var(--accent);
+  margin-bottom: 0.75rem;
+}
+.module-card .mc-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.4rem; }
+.module-card .mc-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.module-card .mc-tags { margin-top: 0.9rem; display: flex; gap: 6px; flex-wrap: wrap; }
